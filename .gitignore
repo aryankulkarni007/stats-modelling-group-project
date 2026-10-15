@@ -1,0 +1,30 @@
+# R / RStudio
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj.user
+.httr-oauth
+renv/library/
+renv/staging/
+
+# R build and report output
+*_cache/
+*_files/
+*.knit.md
+*.utf8.md
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor swap and session files
+*.swp
+*.swo
+.vim/
+Session.vim
+
+# Claude Code artifacts
+.claude/
+.remember/
+CLAUDE.md
