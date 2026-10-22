@@ -1,0 +1,4 @@
+# Store text with LF in the repo so Windows and macOS checkouts do not
+# produce whole-file line-ending diffs.
+* text=auto
+*.pdf binary
