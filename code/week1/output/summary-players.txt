@@ -1,0 +1,16 @@
+               team     position       age        minutes_played
+ Dunmore Athletic: 28   DEF:216   Min.   :17.00   Min.   : 105  
+ Ferndale City   : 28   FWD:136   1st Qu.:22.00   1st Qu.:2025  
+ Norbury United  : 28   GK : 62   Median :25.00   Median :2544  
+ Ulverton FC     : 28   MID:206   Mean   :25.06   Mean   :2540  
+ Vale Wanderers  : 28             3rd Qu.:28.00   3rd Qu.:3058  
+ Yorwick United  : 28             Max.   :36.00   Max.   :3960  
+ (Other)         :452                                           
+ training_load   prev_injuries         bmi        injured
+ Min.   :1.000   Min.   :0.0000   Min.   :19.00   0:505  
+ 1st Qu.:3.000   1st Qu.:0.0000   1st Qu.:22.57   1:115  
+ Median :3.000   Median :1.0000   Median :23.60          
+ Mean   :3.202   Mean   :0.9032   Mean   :23.52          
+ 3rd Qu.:4.000   3rd Qu.:1.0000   3rd Qu.:24.50          
+ Max.   :5.000   Max.   :4.0000   Max.   :27.90          
+                                                         

@@ -8,6 +8,9 @@
 renv/library/
 renv/staging/
 
+# latexmk output (PDF, aux, minted cache) for each code/<week>/ document
+code/*/build/
+
 # R build and report output
 *_cache/
 *_files/
