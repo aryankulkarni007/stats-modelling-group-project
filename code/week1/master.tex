@@ -1,0 +1,156 @@
+\documentclass[12pt,notitlepage]{report}
+% The shared notes preamble lives outside this repo.
+\input{/Users/aryankulkarni/Documents/y3-notes/preamble.tex}
+
+\title{Week 1: exploring the data and a first linear model}
+\author{Aryan Kulkarni}
+
+\begin{document}
+\maketitle
+
+% Run the R blocks in order with <space>rr. R's working directory is this
+% directory, so figures/ and output/ mean the same to R and to LaTeX, and the
+% data sits two levels up. The out() helper saves printed output to output/,
+% which the text blocks below include.
+
+\section{Data and variable types}
+
+\begin{minted}{r}
+library(tidyverse)
+
+matches <- read_csv("../../ashford_matches.csv") |>
+  mutate(home_away = factor(home_away))
+
+players <- read_csv("../../league_players.csv") |>
+  mutate(across(c(team, position, injured), factor))
+
+out <- function(x, name) {
+  writeLines(capture.output(x), sprintf("output/%s.txt", name))
+}
+\end{minted}
+
+\begin{minted}{r}
+out(glimpse(matches), "glimpse-matches")
+out(summary(matches), "summary-matches")
+\end{minted}
+
+\inputminted{text}{output/glimpse-matches.txt}
+\inputminted{text}{output/summary-matches.txt}
+
+\begin{minted}{r}
+out(glimpse(players), "glimpse-players")
+out(summary(players), "summary-players")
+\end{minted}
+
+\inputminted{text}{output/glimpse-players.txt}
+\inputminted{text}{output/summary-players.txt}
+
+\paragraph{Classification.}
+\mintinline{r}|read_csv| only decides how a column is stored (numbers or
+text), so the types below are our own reading of what each variable means.
+
+\begin{center}
+  \begin{tabular}{lll}
+    Data set & Type & Variables \\
+    \toprule
+    matches & categorical      & \mintinline{r}|home_away| \\
+    matches & discrete         & \mintinline{r}|goals_scored|, \mintinline{r}|goals_conceded| \\
+    matches & discrete ordinal & \mintinline{r}|opponent_rank| \\
+    players & categorical      & \mintinline{r}|team|, \mintinline{r}|position| \\
+    players & binary           & \mintinline{r}|injured| \\
+    players & discrete         & \mintinline{r}|prev_injuries| \\
+    players & discrete ordinal & \mintinline{r}|training_load| \\
+    players & continuous       & \mintinline{r}|bmi|, \mintinline{r}|age|, \mintinline{r}|minutes_played| \\
+  \end{tabular}
+\end{center}
+
+\section{Plots before modelling}
+
+\begin{minted}{r}
+p <- ggplot(players, aes(x = minutes_played)) +
+  geom_histogram(bins = 30)
+ggsave("figures/hist-minutes.pdf", p, width = 6, height = 4)
+
+p <- ggplot(players, aes(x = bmi)) +
+  geom_histogram(bins = 30)
+ggsave("figures/hist-bmi.pdf", p, width = 6, height = 4)
+\end{minted}
+
+\incfig[0.8]{hist-minutes}
+
+\incfig[0.8]{hist-bmi}
+
+There is no heavy skew or pile-up at the edges of the histograms, so
+approximately normal residuals are plausible.
+
+\begin{minted}{r}
+p <- ggplot(players, aes(x = position, y = minutes_played)) +
+  geom_boxplot()
+ggsave("figures/box-minutes-position.pdf", p, width = 6, height = 4)
+\end{minted}
+
+\incfig[0.8]{box-minutes-position}
+
+The data is fairly homogeneous within each position.
+
+\begin{minted}{r}
+p <- ggplot(players, aes(x = age, y = minutes_played, colour = position)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", se = FALSE)
+ggsave("figures/scatter-minutes-age.pdf", p, width = 6, height = 4)
+\end{minted}
+
+\incfig[0.8]{scatter-minutes-age}
+
+There is no bending in the age scatter, so a linear \mintinline{r}|age| term
+makes sense.
+
+\begin{minted}{r}
+p <- ggplot(players, aes(x = factor(training_load), y = minutes_played)) +
+  geom_boxplot()
+ggsave("figures/box-minutes-load.pdf", p, width = 6, height = 4)
+\end{minted}
+
+\incfig[0.8]{box-minutes-load}
+
+The \mintinline{r}|training_load| boxes rise evenly, so a numeric term is fine.
+
+\begin{minted}{r}
+p <- ggplot(players, aes(x = position, y = bmi)) +
+  geom_boxplot()
+ggsave("figures/box-bmi-position.pdf", p, width = 6, height = 4)
+\end{minted}
+
+\incfig[0.8]{box-bmi-position}
+
+\section{Linear model for minutes played}
+
+Injury is left out of the model because it directly reduces
+\mintinline{r}|minutes_played|, so it is a consequence of the outcome.
+
+\begin{minted}{r}
+fit_min <- lm(
+  minutes_played ~ position + age + training_load + prev_injuries,
+  data = players
+)
+out(summary(fit_min), "summary-fit-min")
+\end{minted}
+
+\inputminted{text}{output/summary-fit-min.txt}
+
+These explanatory variables explain about 27\% of the variation in minutes
+played. The residual standard error is 605 minutes, so a typical prediction
+misses by about 6.7 full matches. \mintinline{r}|position| and
+\mintinline{r}|training_load| are very significant predictors of playing
+minutes.
+
+\begin{minted}{r}
+pdf("figures/diag-min.pdf", width = 7, height = 7)
+par(mfrow = c(2, 2))
+plot(fit_min)
+dev.off()
+\end{minted}
+
+\incfig[0.9]{diag-min}
+
+\end{document}
