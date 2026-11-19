@@ -48,4 +48,3 @@ model2 <- glm(
   family = binomial(link = "logit"),
   data = players
 )
-
