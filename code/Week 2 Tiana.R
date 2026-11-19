@@ -9,7 +9,7 @@ head(players)
 head(matches)
 
 # checking dimensions of dataset
-dim(players) 
+dim(players)
 dim(matches)
 
 # summary(players)
@@ -39,3 +39,13 @@ model <- lm(minutes_played ~ age,
             data = players)
 
 summary(model)
+
+# Interaction Model
+
+# Fit model with training load x age interaction
+model2 <- glm(
+  injured ~ training_load * age + prev_injuries,
+  family = binomial(link = "logit"),
+  data = players
+)
+
