@@ -1,0 +1,18 @@
+Call:
+lm(formula = minutes_played ~ position + training_load, data = players)
+
+Residuals:
+     Min       1Q   Median       3Q      Max 
+-1713.72  -415.38     5.11   418.51  1562.40 
+
+Coefficients:
+              Estimate Std. Error t value Pr(>|t|)
+(Intercept)    2266.09      85.77  26.422  < 2e-16
+positionMID    -321.57      58.94  -5.456 7.06e-08
+positionFWD    -621.74      66.23  -9.387  < 2e-16
+positionGK      578.47      87.42   6.617 7.99e-11
+training_load   143.54      24.26   5.916 5.49e-09
+
+Residual standard error: 604.4 on 615 degrees of freedom
+Multiple R-squared:  0.2801,	Adjusted R-squared:  0.2754 
+F-statistic: 59.81 on 4 and 615 DF,  p-value: < 2.2e-16

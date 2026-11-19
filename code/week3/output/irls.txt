@@ -1,0 +1,4 @@
+                  by_hand         glm
+(Intercept)   -0.89880321 -0.89880321
+home_awayHome  0.69314718  0.69314718
+opponent_rank  0.05434793  0.05434793

@@ -1,0 +1,4 @@
+             r_squared                      f                p_value 
+           0.007207559            0.634721410            0.727323601 
+smallest_coefficient_p 
+           0.268767960 

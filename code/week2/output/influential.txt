@@ -1,0 +1,5 @@
+    position minutes_played training_load fitted rstudent  cook
+43       FWD            105             1   1788    -2.82 0.025
+297      FWD           3810             5   2362     2.42 0.015
+466      MID            679             1   2088    -2.36 0.014
+531       GK           1705             4   3419    -2.88 0.028

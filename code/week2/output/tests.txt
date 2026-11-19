@@ -1,0 +1,4 @@
+                             Df Sum of Sq      F Pr(>F)
+drop age, prev_injuries, bmi  3    198295 0.1802 0.9098
+load as a factor              3    444153 0.4041 0.7501
+position:load interaction     3   1769974 1.6199 0.1836

@@ -1,0 +1,4 @@
+              lambda                lower                upper 
+          1.15000000           0.96000000           1.36000000 
+largest_abs_residual       cook_threshold 
+          2.87609875           0.01311475 

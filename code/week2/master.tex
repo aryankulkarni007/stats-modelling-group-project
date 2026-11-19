@@ -1,0 +1,364 @@
+\documentclass[12pt,notitlepage]{report}
+% The shared notes preamble lives outside this repo.
+\input{/Users/aryankulkarni/Documents/y3-notes/preamble.tex}
+
+\title{Week 2: exploring the data and a first linear model}
+\author{Aryan Kulkarni}
+\date{MTH6134 group project}
+
+\begin{document}
+\maketitle
+
+\paragraph{Findings.}
+Playing minutes depend on position and training load and on nothing else we
+measure: the model explains 28\% of the variation and passes every check of
+the Week 2 practical. Sixteen players sit on a ceiling of 3960 minutes, which
+week 10 takes up. BMI shows no association with any other variable.
+
+\section{The data}
+
+\begin{minted}{r}
+source("../common.R")
+
+out(glimpse(players), "glimpse-players")
+out(summary(players), "summary-players")
+out(glimpse(matches), "glimpse-matches")
+\end{minted}
+
+\inputminted{text}{output/glimpse-players.txt}
+\inputminted{text}{output/summary-players.txt}
+\inputminted{text}{output/glimpse-matches.txt}
+
+\mintinline{r}|common.R| reads both files, fixes the factor levels (DEF and
+Away are the reference levels) and derives \mintinline{r}|opponent|,
+\mintinline{r}|goal_diff| and \mintinline{r}|result| for the matches.
+
+\begin{minted}{r}
+checks <- c(
+  missing_values = sum(is.na(players)) + sum(is.na(matches)),
+  clubs = nlevels(players$team),
+  smallest_squad = min(table(players$team)),
+  largest_squad = max(table(players$team)),
+  missing_rank = setdiff(1:24, matches$opponent_rank),
+  players_at_3960 = sum(players$minutes_played == 3960)
+)
+out(checks, "checks")
+out(table(matches$home_away, matches$result), "results")
+\end{minted}
+
+\inputminted{text}{output/checks.txt}
+\inputminted{text}{output/results.txt}
+
+Nothing is missing. The 24 squads hold 24 to 28 players. Ashford meet each of
+23 opponents home and away, and the one rank absent from
+\mintinline{r}|opponent_rank| is 9, so Ashford finished ninth (22 wins, 11
+draws, 13 defeats, 77 points). The largest value of
+\mintinline{r}|minutes_played| is 3960, which is 44 full matches, and 16
+players share it, 12 of them goalkeepers. That pattern points to a recording
+ceiling.
+
+\paragraph{Variable types.}
+\mintinline{r}|read_csv| only decides how a column is stored, so the types
+below are our reading of what each variable means.
+
+\begin{center}
+  \begin{tabular}{lll}
+    \toprule
+    Data set & Type & Variables \\
+    \midrule
+    players & nominal          & \mintinline{r}|team|, \mintinline{r}|position| \\
+    players & binary           & \mintinline{r}|injured| \\
+    players & ordinal (1 to 5) & \mintinline{r}|training_load| \\
+    players & count            & \mintinline{r}|prev_injuries| \\
+    players & continuous       & \mintinline{r}|age|, \mintinline{r}|bmi|, \mintinline{r}|minutes_played| \\
+    matches & binary           & \mintinline{r}|home_away| \\
+    matches & count            & \mintinline{r}|goals_scored|, \mintinline{r}|goals_conceded| \\
+    matches & rank             & \mintinline{r}|opponent_rank| \\
+    matches & ordinal, derived & \mintinline{r}|result| \\
+    \bottomrule
+  \end{tabular}
+\end{center}
+
+\section{Plots before modelling}
+
+\begin{minted}{r}
+fig <- players |>
+  pivot_longer(c(minutes_played, bmi, age)) |>
+  ggplot(aes(x = value)) +
+  geom_histogram(bins = 20, colour = "white") +
+  facet_wrap(~name, scales = "free") +
+  labs(x = NULL, y = "Players")
+save_fig(fig, "distributions", height = 2.3)
+
+fig <- players |>
+  mutate(load = factor(training_load), previous = factor(prev_injuries)) |>
+  pivot_longer(
+    c(position, load, previous),
+    names_to = "variable", values_to = "level",
+    values_transform = as.character
+  ) |>
+  mutate(
+    variable = factor(variable, levels = c("position", "load", "previous")),
+    level = factor(level, levels = c(levels(players$position), 0:5))
+  ) |>
+  ggplot(aes(x = level, y = minutes_played)) +
+  geom_boxplot(outlier.size = 0.6) +
+  facet_grid(
+    ~variable, scales = "free_x", space = "free_x",
+    labeller = as_labeller(c(
+      position = "position", load = "training load",
+      previous = "previous injuries"
+    ))
+  ) +
+  labs(x = NULL, y = "Minutes played")
+save_fig(fig, "minutes-by-group", height = 2.6)
+
+fig <- players |>
+  pivot_longer(c(age, bmi)) |>
+  ggplot(aes(x = value, y = minutes_played)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "loess", formula = y ~ x) +
+  facet_wrap(~name, scales = "free_x") +
+  labs(x = NULL, y = "Minutes played")
+save_fig(fig, "minutes-by-number", height = 2.4)
+\end{minted}
+
+\begin{figure}[H]
+  \centering
+  \incfig{distributions}
+  \caption{The three continuous variables are roughly symmetric with no long
+    tail, so a normal error model is plausible for either outcome.}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \incfig{minutes-by-group}
+  \caption{Minutes differ by position (goalkeepers most, forwards least) and
+    rise evenly across training load. Previous injuries show no pattern.}
+  \label{fig:groups}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \incfig{minutes-by-number}
+  \caption{The smooth is flat for age and for BMI: neither carries a trend,
+    and neither bends.}
+\end{figure}
+
+\section{A linear model for minutes played}
+
+For player $i$ the model is
+\[
+  Y_i = \beta_0 + \bm{x}_i^\top \bm{\beta} + \varepsilon_i,
+  \qquad \varepsilon_i \iid \Norm(0, \sigma^2),
+\]
+which assumes a mean that is linear in the explanatory variables,
+independent errors, one error variance and normal errors.
+\mintinline{r}|injured| is left out because an injury during the season
+removes playing minutes, so it is a consequence of the same season and cannot
+explain it. \mintinline{r}|team| waits for week 11.
+
+\begin{minted}{r}
+fit_full <- lm(
+  minutes_played ~ position + age + training_load + prev_injuries + bmi,
+  data = players
+)
+out(coef(summary(fit_full)), "coef-fit-full")
+
+fit_min <- lm(minutes_played ~ position + training_load, data = players)
+fit_factor <- lm(minutes_played ~ position + factor(training_load), players)
+fit_inter <- lm(minutes_played ~ position * training_load, players)
+tests <- rbind(
+  "drop age, prev_injuries, bmi" = anova(fit_min, fit_full)[2, 3:6],
+  "load as a factor" = anova(fit_min, fit_factor)[2, 3:6],
+  "position:load interaction" = anova(fit_min, fit_inter)[2, 3:6]
+)
+out(tests, "tests")
+\end{minted}
+
+\inputminted{text}{output/coef-fit-full.txt}
+\inputminted{text}{output/tests.txt}
+
+Age, previous injuries and BMI have $t$ values below 1 in absolute size, and
+the $F$ test for dropping all three gives $p = 0.91$. Following the practical,
+two more $F$ tests settle the form of what remains. Treating training load as
+a five-level factor does not improve on a straight line ($p = 0.75$), and the
+slope does not differ by position ($p = 0.18$). The model is therefore
+additive in position and training load.
+
+\begin{minted}{r}
+out(summary(fit_min), "summary-fit-min")
+out(confint(fit_min), "confint-fit-min")
+\end{minted}
+
+\inputminted{text}{output/summary-fit-min.txt}
+\inputminted{text}{output/confint-fit-min.txt}
+
+The fitted model for a defender is
+$\widehat{\E}(\text{minutes}) = 2266 + 144 \times \text{load}$. Each extra
+point of training load goes with 144 more minutes (95\% interval 96 to 191),
+about a match and a half. At equal load a midfielder plays 322 minutes fewer
+than a defender, a forward 622 fewer and a goalkeeper 578 more. This is an
+association: coaches may train their regular starters harder, so the slope
+does not say that raising a player's load earns him minutes.
+
+$R^2 = 0.28$ and the residual standard error is 604 minutes, close to seven
+full matches, so the model describes group averages well and individual
+players poorly.
+
+\section{Checking the assumptions}
+
+The checks are those of the practical: studentised residuals against fitted
+values, their normal QQ plot, Cook's distances against the threshold
+$8/(n - 2p)$, and the Box-Cox profile likelihood.
+
+\begin{minted}{r}
+r <- rstudent(fit_min)
+cook <- cooks.distance(fit_min)
+n <- nobs(fit_min)
+p <- length(coef(fit_min))
+cook_cut <- 8 / (n - 2 * p)
+flagged <- which(cook > cook_cut)
+
+base_fig("checks-min", mfrow = c(2, 2), height = 4.6)
+plot(fitted(fit_min), r, col = pt,
+     xlab = "Fitted values", ylab = "Studentised residuals")
+abline(h = 0, lwd = 2)
+qqnorm(r, main = "", col = pt)
+qqline(r, lwd = 2)
+plot(cook, type = "h", col = blue, ylim = c(0, 1.15 * max(cook)),
+     xlab = "Observation", ylab = "Cook's distance")
+abline(h = cook_cut, lty = 2)
+text(flagged, cook[flagged], labels = flagged, pos = 3, cex = 0.8)
+bc <- MASS::boxcox(fit_min, lambda = seq(0, 2, by = 0.01))
+dev.off()
+
+lambda_ci <- range(bc$x[bc$y > max(bc$y) - qchisq(0.95, 1) / 2])
+out(c(lambda = bc$x[which.max(bc$y)], lower = lambda_ci[1],
+      upper = lambda_ci[2], largest_abs_residual = max(abs(r)),
+      cook_threshold = cook_cut), "check-numbers")
+
+influential <- players[flagged, c("position", "minutes_played", "training_load")] |>
+  as.data.frame() |>
+  mutate(fitted = round(fitted(fit_min)[flagged]),
+         rstudent = round(r[flagged], 2), cook = round(cook[flagged], 3))
+rownames(influential) <- flagged
+out(influential, "influential")
+
+fit_drop <- update(fit_min, data = players[-flagged, ])
+out(round(cbind(all = coef(fit_min), without = coef(fit_drop)), 1),
+    "sensitivity")
+\end{minted}
+
+\begin{figure}[H]
+  \centering
+  \incfig{checks-min}
+  \caption{Checks on the final model. The dashed line in the Cook's distance
+    panel is $8/(n - 2p)$.}
+  \label{fig:checks}
+\end{figure}
+
+\inputminted{text}{output/check-numbers.txt}
+\inputminted{text}{output/influential.txt}
+\inputminted{text}{output/sensitivity.txt}
+
+\begin{itemize}
+  \item \emph{Residuals against fitted values.} The points scatter evenly
+    about zero with no curve and no funnel, so linearity and constant
+    variance raise no concern. No studentised residual exceeds 3 in absolute
+    size.
+  \item \emph{QQ plot.} The points follow the line, so normality is
+    reasonable. The upper tail falls slightly below the line, which is the
+    ceiling at 3960 holding down the largest residuals.
+  \item \emph{Cook's distance.} Four players exceed the threshold of 0.013,
+    each with far fewer or far more minutes than his position and load
+    predict. The largest distance is 0.028, which is small in absolute terms.
+    Refitting without the four leaves every conclusion unchanged: the load
+    slope moves from 144 to 130 and the goalkeeper effect from 578 to 611.
+    They stay in.
+  \item \emph{Box-Cox.} The profile likelihood peaks at $\lambda = 1.15$ and
+    its 95\% interval, 0.96 to 1.36, contains 1. No transformation of the
+    response is needed.
+\end{itemize}
+
+\section{Confidence and prediction intervals}
+
+\begin{minted}{r}
+grid <- expand_grid(position = levels(players$position), training_load = 1:5)
+conf <- predict(fit_min, grid, interval = "confidence")
+pred <- predict(fit_min, grid, interval = "prediction")
+bands <- grid |>
+  mutate(
+    position = factor(position, levels = levels(players$position)),
+    fit = conf[, "fit"], conf_lwr = conf[, "lwr"], conf_upr = conf[, "upr"],
+    pred_lwr = pred[, "lwr"], pred_upr = pred[, "upr"]
+  )
+
+fig <- ggplot(bands, aes(x = training_load)) +
+  geom_jitter(aes(y = minutes_played), data = players, colour = grey,
+              width = 0.15, height = 0, alpha = 0.25, size = 0.6) +
+  geom_hline(yintercept = 3960, linetype = "dotted", colour = grey) +
+  geom_ribbon(aes(ymin = conf_lwr, ymax = conf_upr), fill = blue, alpha = 0.35) +
+  geom_line(aes(y = fit)) +
+  geom_line(aes(y = pred_lwr), linetype = "dashed") +
+  geom_line(aes(y = pred_upr), linetype = "dashed") +
+  facet_wrap(~position, nrow = 1) +
+  labs(x = "Training load", y = "Minutes played")
+save_fig(fig, "intervals", height = 2.8)
+
+new <- data.frame(position = c("MID", "GK"), training_load = c(3, 5))
+out(cbind(new, round(predict(fit_min, new, interval = "prediction"))),
+    "predictions")
+\end{minted}
+
+\begin{figure}[H]
+  \centering
+  \incfig{intervals}
+  \caption{Fitted lines with 95\% confidence bands (shaded) and prediction
+    intervals (dashed). The dotted line is the ceiling of 3960 minutes.}
+  \label{fig:intervals}
+\end{figure}
+
+\inputminted{text}{output/predictions.txt}
+
+The confidence bands are narrow because 620 players pin down each mean: a
+midfielder at load 3 averages 2375 minutes, give or take 83. The prediction
+interval for one such player runs from 1185 to 3565, a width set almost
+entirely by $\sigma$. For a goalkeeper at load 5 the upper prediction limit is
+4761 minutes, more than the 4140 a 46-match season contains. A normal model
+has no upper bound, and this is where the ceiling starts to matter.
+
+\section{BMI as a second outcome}
+
+\begin{minted}{r}
+fit_bmi <- lm(
+  bmi ~ position + age + training_load + prev_injuries + minutes_played,
+  data = players
+)
+f <- summary(fit_bmi)$fstatistic
+out(c(r_squared = summary(fit_bmi)$r.squared, f = f[[1]],
+      p_value = pf(f[[1]], f[[2]], f[[3]], lower.tail = FALSE),
+      smallest_coefficient_p = min(coef(summary(fit_bmi))[-1, 4])),
+    "bmi")
+\end{minted}
+
+\inputminted{text}{output/bmi.txt}
+
+The overall $F$ test gives $p = 0.73$, $R^2$ is below 0.01, and no single
+coefficient is close to significant. BMI shows no association with position,
+age, training load, injury history or playing time. There is no model to build
+here, and BMI can be set aside as a response.
+
+\section{Summary}
+
+\begin{itemize}
+  \item Minutes played is modelled by position and a linear training-load
+    term. The assumptions hold and no transformation is needed.
+  \item The model predicts averages, with $R^2 = 0.28$ and a residual standard
+    error of 604 minutes.
+  \item Carried forward: the ceiling at 3960 minutes (week 10) and the
+    grouping of players in clubs, which the independence assumption ignores
+    (week 11).
+\end{itemize}
+
+\end{document}

@@ -1,0 +1,6 @@
+                     lm       glm
+(Intercept)   2266.0934 2266.0934
+positionMID   -321.5672 -321.5672
+positionFWD   -621.7387 -621.7387
+positionGK     578.4735  578.4735
+training_load  143.5370  143.5370

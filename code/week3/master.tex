@@ -1,0 +1,202 @@
+\documentclass[12pt,notitlepage]{report}
+% The shared notes preamble lives outside this repo.
+\input{/Users/aryankulkarni/Documents/y3-notes/preamble.tex}
+
+\title{Week 3: responses, explanatory variables and the GLM family}
+\author{Aryan Kulkarni}
+\date{MTH6134 group project}
+
+\begin{document}
+\maketitle
+
+\paragraph{Findings.}
+The data hold four kinds of response: a continuous one, a binary one, counts
+and an ordered category. The first three map to the normal, Bernoulli and
+Poisson members of the GLM family, and one algorithm fits all three. The
+ordered response needs an extension (week 10).
+
+\section{Which variables are responses}
+
+A variable can explain a response only if its value is settled before the
+response, or separately from it. Age, position and the previous three seasons
+of injuries precede the 2023/24 season. Minutes played and injury are both
+outcomes of that season, so neither is used to explain the other. Training
+load is set during the season and is treated as explanatory, with the caution
+that coaches may choose it in response to how a player is doing.
+
+\begin{center}
+  \small
+  \begin{tabular}{llll}
+    \toprule
+    Response & Outcome & Distribution, link & Week \\
+    \midrule
+    \mintinline{r}|minutes_played| & continuous, largest value 3960 & normal, identity & 2, 10 \\
+    \mintinline{r}|injured| & binary & Bernoulli, logit & 4, 5 \\
+    \mintinline{r}|result == "Win"| & binary & Bernoulli, logit & 4 \\
+    \mintinline{r}|goals_scored| & count & Poisson, log & 6 \\
+    \mintinline{r}|goals_conceded| & count & Poisson, log & 6, 10 \\
+    \mintinline{r}|prev_injuries| & count, observed 0 to 4 & Poisson, log & 6, 10 \\
+    \mintinline{r}|result| & ordered, three levels & proportional odds & 10 \\
+    \bottomrule
+  \end{tabular}
+\end{center}
+
+The explanatory variables are \mintinline{r}|position|, \mintinline{r}|age|,
+\mintinline{r}|training_load|, \mintinline{r}|prev_injuries| and
+\mintinline{r}|bmi| for players, and \mintinline{r}|home_away| and
+\mintinline{r}|opponent_rank| for matches. \mintinline{r}|team| and
+\mintinline{r}|opponent| define groups (week 11). The categorical variables
+are also cross-classified in weeks 8 and 9.
+
+\section{What the counts look like}
+
+A Poisson variable has variance equal to its mean, so the two are compared
+for each count.
+
+\begin{minted}{r}
+source("../common.R")
+
+counts <- list(
+  goals_scored = matches$goals_scored,
+  goals_conceded = matches$goals_conceded,
+  prev_injuries = players$prev_injuries
+)
+moments <- sapply(counts, function(y) {
+  c(mean = mean(y), variance = var(y), ratio = var(y) / mean(y), max = max(y))
+})
+out(round(moments, 2), "mean-variance")
+
+count_data <- enframe(counts, name = "variable", value = "y") |> unnest(y)
+observed <- count_data |>
+  count(variable, y) |>
+  group_by(variable) |>
+  mutate(share = n / sum(n))
+reference <- count_data |>
+  group_by(variable) |>
+  summarise(mu = mean(y)) |>
+  expand_grid(y = 0:8) |>
+  mutate(share = dpois(y, mu))
+
+fig <- ggplot(observed, aes(x = y, y = share)) +
+  geom_col(width = 0.6) +
+  geom_point(data = reference, colour = orange, size = 1.6) +
+  facet_wrap(~variable) +
+  scale_x_continuous(breaks = 0:8) +
+  labs(x = "Count", y = "Share of observations")
+save_fig(fig, "counts", height = 2.4)
+\end{minted}
+
+\inputminted{text}{output/mean-variance.txt}
+
+\begin{figure}[H]
+  \centering
+  \incfig{counts}
+  \caption{Observed counts (bars) against a Poisson distribution with the
+    same mean (points).}
+  \label{fig:counts}
+\end{figure}
+
+Goals conceded sit close to the Poisson shape. Goals scored have a variance
+1.5 times the mean, driven by one match with 8 goals; the Poisson assumption
+concerns the distribution given the explanatory variables, so this ratio is
+judged again in week 6 once home advantage and opponent strength are in the
+model. Previous injuries have too many zeros and too many fours for a Poisson
+variable, and the largest value is exactly 4. Week 10 returns to both
+features.
+
+\section{The three parts of a GLM}
+
+A generalised linear model has
+\begin{enumerate}
+  \item a \emph{random part}: independent responses $Y_i$ from one
+    exponential-family distribution with mean $\mu_i$,
+  \item a \emph{systematic part}: a linear predictor
+    $\eta_i = \bm{x}_i^\top \bm{\beta}$,
+  \item a \emph{link}: a monotone function $g$ with $g(\mu_i) = \eta_i$.
+\end{enumerate}
+The exponential family has density
+$f(y; \theta, \phi) = \exp\{(y\theta - b(\theta))/\phi + c(y, \phi)\}$, which
+gives $\E(Y) = b'(\theta)$ and $\Var(Y) = \phi\, b''(\theta) = \phi V(\mu)$.
+The variance is therefore a known function of the mean, and choosing a family
+is choosing that function. The canonical link sets $\eta = \theta$.
+
+\begin{center}
+  \begin{tabular}{llll}
+    \toprule
+    Family & $V(\mu)$ & $\phi$ & Canonical link \\
+    \midrule
+    normal & 1 & $\sigma^2$ & identity, $\mu$ \\
+    Bernoulli & $\mu(1 - \mu)$ & 1 & logit, $\log\{\mu/(1 - \mu)\}$ \\
+    Poisson & $\mu$ & 1 & $\log \mu$ \\
+    \bottomrule
+  \end{tabular}
+\end{center}
+
+\paragraph{The linear model is a GLM.}
+With the normal family and identity link, \mintinline{r}|glm| reproduces
+\mintinline{r}|lm| exactly, and its dispersion estimate is $\hat\sigma^2$.
+
+\begin{minted}{r}
+fit_lm <- lm(minutes_played ~ position + training_load, data = players)
+fit_glm <- glm(minutes_played ~ position + training_load,
+               family = gaussian, data = players)
+out(cbind(lm = coef(fit_lm), glm = coef(fit_glm)), "lm-is-glm")
+out(c(sigma_squared = sigma(fit_lm)^2,
+      dispersion = summary(fit_glm)$dispersion), "dispersion")
+\end{minted}
+
+\inputminted{text}{output/lm-is-glm.txt}
+\inputminted{text}{output/dispersion.txt}
+
+\section{How a GLM is fitted}
+
+Maximum likelihood has no closed form outside the normal case. With a
+canonical link the score equations are
+$\bm{X}^\top(\bm{y} - \bm{\mu}) = \bm{0}$, and Newton's method for solving
+them is a sequence of weighted least-squares fits. Given the current
+$\bm{\beta}$, form the working response and weights
+\[
+  z_i = \eta_i + (y_i - \mu_i)\, g'(\mu_i),
+  \qquad
+  w_i = \frac{1}{V(\mu_i)\, g'(\mu_i)^2},
+\]
+regress $\bm{z}$ on $\bm{X}$ with weights $\bm{w}$, and repeat. For the
+Poisson model with log link, $g'(\mu) = 1/\mu$, so $z = \eta + (y - \mu)/\mu$
+and $w = \mu$. Eight iterations by hand match \mintinline{r}|glm|.
+
+\begin{minted}{r}
+X <- model.matrix(~ home_away + opponent_rank, data = matches)
+y <- matches$goals_scored
+beta <- c(log(mean(y)), 0, 0)
+for (iteration in 1:8) {
+  eta <- drop(X %*% beta)
+  mu <- exp(eta)
+  z <- eta + (y - mu) / mu
+  beta <- drop(solve(t(X) %*% (mu * X), t(X) %*% (mu * z)))
+}
+
+fit_goals <- glm(goals_scored ~ home_away + opponent_rank,
+                 family = poisson, data = matches)
+out(cbind(by_hand = beta, glm = coef(fit_goals)), "irls")
+\end{minted}
+
+\inputminted{text}{output/irls.txt}
+
+The final weighted fit also supplies the standard errors, since
+$\widehat{\Var}(\hat{\bm{\beta}}) = \phi(\bm{X}^\top \bm{W} \bm{X})^{-1}$.
+
+\section{Summary}
+
+\begin{itemize}
+  \item Injury is the binary response for week 4, goals and previous injuries
+    are the counts for week 6, and the match result is an ordered response
+    for week 10.
+  \item A family is a statement about how the variance depends on the mean.
+    The count plots already suggest where that statement will fail: previous
+    injuries.
+  \item Every model from here on is fitted by iterated weighted least
+    squares, so the residuals, leverages and Cook's distances of week 2 all
+    have GLM versions (week 5).
+\end{itemize}
+
+\end{document}

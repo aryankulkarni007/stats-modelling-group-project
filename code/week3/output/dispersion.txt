@@ -1,0 +1,2 @@
+sigma_squared    dispersion 
+     365322.6      365322.6 

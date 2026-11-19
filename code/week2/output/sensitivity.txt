@@ -1,0 +1,6 @@
+                 all without
+(Intercept)   2266.1  2309.3
+positionMID   -321.6  -312.9
+positionFWD   -621.7  -618.2
+positionGK     578.5   610.9
+training_load  143.5   129.6

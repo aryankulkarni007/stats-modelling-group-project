@@ -1,0 +1,4 @@
+ missing_values           clubs  smallest_squad   largest_squad 
+              0              24              24              28 
+   missing_rank players_at_3960 
+              9              16 
