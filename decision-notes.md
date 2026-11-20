@@ -15,7 +15,12 @@
 2. What I decided: Keep the match in the main model, and report the sensitivity analysis without it alongside the main results.
 3. Why: It is a genuine result, not a data error, so there is no justification for deleting it. But because the evidence for both effects depends heavily on this one match, the club should treat the size of the home and opponent-rank effects with caution.
 
-#20 Nov 2026: Week 5, Goals conceded and underdispersion (Ozair)
-- What we found: The same model as for goals scored was selected (home/away + opponent rank). Ashford conceded about half as many goals at home (rate ratio 0.52, 95% CI 0.26 to 1.00) and about 5% fewer per place lower the opponent ranked (0.949, 0.905 to 0.994). The dispersion was 0.57, so goals conceded were underdispersed.
-- What I decided: Report the standard Poisson model rather than the quasi-Poisson.
-- Why: Because the dispersion is below 1, the quasi-Poisson adjustment would shrink the standard errors and make the effects look more certain (home p = 0.015 instead of 0.056). We cannot be sure this adjustment is accurate with only 46 matches, so the more cautious Poisson model avoids giving the club misleading information.
+#20 Nov 2026: Week 5, Goals conceded and Underdispersion (Ozair)
+1. What we found: The same model as for goals scored was selected (home/away + opponent rank). Ashford conceded about half as many goals at home (rate ratio 0.52, 95% CI 0.26 to 1.00) and about 5% fewer per place lower the opponent ranked (0.949, 0.905 to 0.994). The dispersion was 0.57, so goals conceded were underdispersed.
+2. What I decided: Report the standard Poisson model rather than the quasi-Poisson.
+3. Why: Because the dispersion is below 1, the quasi-Poisson adjustment would shrink the standard errors and make the effects look more certain (home p = 0.015 instead of 0.056). We cannot be sure this adjustment is accurate with only 46 matches, so the more cautious Poisson model avoids giving the club misleading information.
+
+# 20 Nov 2026: Week 5, Negative binomial and offset (Ozair)
+1. What we found: A negative binomial model for goals scored gave almost identical coefficients to the Poisson (home 0.691 vs 0.693; rank 0.0536 vs 0.0543). Theta was estimated at 34 with a standard error of 144, so the data cannot distinguish it from the Poisson (theta → infinity). AIC was higher for the negative binomial (135.4 vs 133.4).
+2. What I decided: Keep the Poisson model, and do not use an offset.
+3. Why: The negative binomial adds an extra parameter but does not improve the fit, which agrees with the dispersion estimate of 0.99 (no overdispersion). No offset is needed because every observation is a single match of the same length, so exposure is equal for all matches.
