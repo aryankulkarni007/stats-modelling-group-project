@@ -14,3 +14,8 @@
 1. What we found: One match (home 8-0 vs the rank-24 team, row 8) was the only influential observation (Cook's distance above 4/n). Refitting without it, both effects kept the same direction but became smaller: the home rate ratio fell from 2.00 (p = 0.011) to 1.71 (p = 0.061), and the rank rate ratio from 1.056 (p = 0.005) to 1.034 (p = 0.105), so neither was significant at the 5% level.
 2. What I decided: Keep the match in the main model, and report the sensitivity analysis without it alongside the main results.
 3. Why: It is a genuine result, not a data error, so there is no justification for deleting it. But because the evidence for both effects depends heavily on this one match, the club should treat the size of the home and opponent-rank effects with caution.
+
+#20 Nov 2026: Week 5, Goals conceded and underdispersion (Ozair)
+- What we found: The same model as for goals scored was selected (home/away + opponent rank). Ashford conceded about half as many goals at home (rate ratio 0.52, 95% CI 0.26 to 1.00) and about 5% fewer per place lower the opponent ranked (0.949, 0.905 to 0.994). The dispersion was 0.57, so goals conceded were underdispersed.
+- What I decided: Report the standard Poisson model rather than the quasi-Poisson.
+- Why: Because the dispersion is below 1, the quasi-Poisson adjustment would shrink the standard errors and make the effects look more certain (home p = 0.015 instead of 0.056). We cannot be sure this adjustment is accurate with only 46 matches, so the more cautious Poisson model avoids giving the club misleading information.
