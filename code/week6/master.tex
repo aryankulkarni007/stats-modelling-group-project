@@ -1,0 +1,205 @@
+\documentclass[12pt,notitlepage]{report}
+% The shared notes preamble lives outside this repo.
+\input{/Users/aryankulkarni/Documents/y3-notes/preamble.tex}
+
+\title{Week 6: Poisson regression for goals}
+\author{Aryan Kulkarni}
+\date{MTH6134 group project}
+
+\begin{document}
+\maketitle
+
+\paragraph{Findings.}
+Ashford score twice as many goals at home as away, and 5.6\% more for each
+place lower the opponent finished. The Poisson model fits. The strength of
+both effects rests partly on one match, an 8-0 home win over the bottom club.
+Previous injuries are not explained by any variable and are overdispersed.
+
+\section{The model}
+
+Goals in match $i$ are $Y_i \dist \text{Poisson}(\mu_i)$ with
+\[
+  \log \mu_i = \beta_0 + \beta_1\,\text{home}_i + \beta_2\,\text{rank}_i ,
+\]
+so $e^{\beta}$ is a rate ratio: the factor by which the expected number of
+goals is multiplied. The model assumes independent matches and a variance
+equal to the mean.
+
+\begin{minted}{r}
+source("../common.R")
+
+fit_goals <- glm(goals_scored ~ home_away + opponent_rank,
+                 family = poisson, data = matches)
+out(summary(fit_goals), "summary-goals")
+out(round(exp(cbind(rate_ratio = coef(fit_goals), confint(fit_goals))), 3),
+    "rate-ratios")
+\end{minted}
+
+\inputminted{text}{output/summary-goals.txt}
+\inputminted{text}{output/rate-ratios.txt}
+
+The home rate ratio is exactly 2.00 (95\% interval 1.18 to 3.49): 40 goals in
+23 home matches against 20 in 23 away. Because every opponent is met once at
+home and once away, rank is balanced across venues and does not disturb this
+ratio. Each place down the table multiplies expected goals by 1.056 (1.017 to
+1.098). The fitted mean runs from 0.43 goals away to the champions up to 3.0
+at home to the bottom club.
+
+\begin{minted}{r}
+grid <- expand_grid(home_away = levels(matches$home_away), opponent_rank = 1:24)
+grid$goals_scored <- predict(fit_goals, grid, type = "response")
+
+fig <- ggplot(matches, aes(x = opponent_rank, y = goals_scored,
+                           colour = home_away)) +
+  geom_point(size = 1.6, alpha = 0.8) +
+  geom_line(data = grid) +
+  scale_colour_manual(values = c(Away = orange, Home = blue), name = NULL) +
+  labs(x = "Opponent's final rank", y = "Goals scored")
+save_fig(fig, "fitted", height = 2.8)
+\end{minted}
+
+\begin{figure}[H]
+  \centering
+  \incfig{fitted}
+  \caption{Goals scored with the fitted Poisson means. The point at 8 goals
+    is the home match against the 24th-placed club.}
+  \label{fig:fitted}
+\end{figure}
+
+\section{Does the model fit?}
+
+\begin{minted}{r}
+fit_inter <- update(fit_goals, . ~ . + home_away:opponent_rank)
+set.seed(1)
+simulated <- replicate(2000, {
+  y <- rpois(nrow(matches), fitted(fit_goals))
+  deviance(glm(y ~ home_away + opponent_rank, family = poisson, data = matches))
+})
+out(c(
+  deviance = deviance(fit_goals),
+  df = df.residual(fit_goals),
+  p_chisq = pchisq(deviance(fit_goals), df.residual(fit_goals),
+                   lower.tail = FALSE),
+  p_simulated = mean(simulated >= deviance(fit_goals)),
+  dispersion = sum(resid(fit_goals, "pearson")^2) / df.residual(fit_goals),
+  p_interaction = anova(fit_goals, fit_inter, test = "Chisq")$`Pr(>Chi)`[2]
+), "fit-check")
+\end{minted}
+
+\inputminted{text}{output/fit-check.txt}
+
+The residual deviance is 49.8 on 43 degrees of freedom. The $\chi^2$
+approximation to its distribution is poor when the means are this small, so
+the deviance is also compared with 2000 data sets simulated from the fitted
+model: neither $p$ value (0.22 and 0.44) signals lack of fit. The Pearson
+dispersion estimate is 0.99, so the variance matches the mean. The home
+advantage does not vary with opponent strength ($p = 0.55$ for the
+interaction).
+
+\begin{minted}{r}
+q <- qresid(fit_goals)
+cook <- cooks.distance(fit_goals)
+cook_cut <- 8 / (nobs(fit_goals) - 2 * length(coef(fit_goals)))
+
+base_fig("checks", mfrow = c(1, 3), height = 2.3)
+plot(fitted(fit_goals), q, col = pt, cex = 1.3,
+     xlab = "Fitted mean", ylab = "Quantile residuals")
+abline(h = 0, lwd = 2)
+qqnorm(q, main = "", col = pt, cex = 1.3)
+qqline(q, lwd = 2)
+plot(cook, type = "h", col = blue, xlab = "Match", ylab = "Cook's distance")
+abline(h = cook_cut, lty = 2)
+text(8, cook[8], labels = 8, pos = 4, cex = 0.8)
+dev.off()
+
+fit_drop <- update(fit_goals, data = matches[-8, ])
+out(c(cook_threshold = cook_cut, cook_match_8 = cook[[8]],
+      fitted_match_8 = fitted(fit_goals)[[8]],
+      prob_8_or_more = ppois(7, fitted(fit_goals)[[8]], lower.tail = FALSE)),
+    "match-8")
+out(round(cbind(coef(summary(fit_drop))[, c(1, 4)],
+                exp(cbind(rate_ratio = coef(fit_drop), confint(fit_drop)))), 3),
+    "without-match-8")
+\end{minted}
+
+\begin{figure}[H]
+  \centering
+  \incfig{checks}
+  \caption{Quantile residuals against fitted means, their QQ plot, and Cook's
+    distances with the threshold $8/(n - 2p) = 0.2$.}
+  \label{fig:checks}
+\end{figure}
+
+\inputminted{text}{output/match-8.txt}
+\inputminted{text}{output/without-match-8.txt}
+
+The residuals show no trend and follow the normal line apart from one point.
+That point is match 8, the 8-0 win, with a Cook's distance of 0.64 against a
+threshold of 0.2. The model expects 3.0 goals in that match and gives 8 or
+more a probability of 0.012, which is unusual for one match and unremarkable
+as the most extreme of 46.
+
+Without match 8 the home rate ratio falls from 2.00 to 1.71 and the rank
+ratio from 1.056 to 1.034, and neither is significant at 5\% ($p = 0.061$
+and $0.105$). The match is a real result and stays in the data. The honest
+statement is that the direction of both effects is stable and their
+significance depends on one match.
+
+\section{Goals conceded}
+
+\begin{minted}{r}
+fit_conceded <- glm(goals_conceded ~ home_away + opponent_rank,
+                    family = poisson, data = matches)
+out(round(cbind(coef(summary(fit_conceded))[, c(1, 2, 4)],
+                exp(cbind(rate_ratio = coef(fit_conceded),
+                          confint(fit_conceded)))), 3), "conceded")
+out(c(dispersion = sum(resid(fit_conceded, "pearson")^2) /
+        df.residual(fit_conceded),
+      largest_cook = max(cooks.distance(fit_conceded))), "conceded-check")
+\end{minted}
+
+\inputminted[fontsize=\footnotesize]{text}{output/conceded.txt}
+\inputminted{text}{output/conceded-check.txt}
+
+The mirror image holds. Ashford concede about half as many goals at home
+(rate ratio 0.52, interval 0.26 to 1.00) and 5\% fewer per place of opponent
+rank (0.95, interval 0.91 to 0.99). No match is influential. The dispersion
+estimate of 0.57 is below 1, so the counts vary less than a Poisson variable
+would, which makes these standard errors conservative. Week 10 returns to
+this.
+
+\section{Previous injuries}
+
+\begin{minted}{r}
+fit_prev <- glm(prev_injuries ~ position + age + training_load + bmi,
+                family = poisson, data = players)
+explained <- fit_prev$null.deviance - deviance(fit_prev)
+out(c(deviance_explained = explained, df = 6,
+      p = pchisq(explained, 6, lower.tail = FALSE),
+      dispersion = sum(resid(fit_prev, "pearson")^2) / df.residual(fit_prev)),
+    "prev")
+\end{minted}
+
+\inputminted{text}{output/prev.txt}
+
+The six coefficients together reduce the deviance by 4.8, no more than chance
+($p = 0.58$): there is no evidence that anything we measure predicts how many
+injuries a player had in the previous three seasons. The dispersion estimate
+is 1.31, so the counts are more variable than Poisson, as the plot in week 3
+suggested. Overdispersion makes a Poisson test too ready to reject, so the
+absence of an effect is not an artefact of the wrong variance. A Poisson
+model is the wrong description of this variable, and week 10 looks for a
+better one.
+
+\section{Summary}
+
+\begin{itemize}
+  \item \mintinline{r}|goals_scored ~ home_away + opponent_rank| with a log
+    link fits well: home rate ratio 2.00, rank ratio 1.056 per place.
+  \item One match carries much of the evidence, and the write-up should say
+    so.
+  \item Goals conceded are underdispersed and previous injuries
+    overdispersed. Both go to week 10.
+\end{itemize}
+
+\end{document}

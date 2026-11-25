@@ -1,0 +1,2 @@
+                 bins_outside largest_abs_quantile_residual 
+                     1.000000                      3.027304 

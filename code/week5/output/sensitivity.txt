@@ -1,0 +1,6 @@
+                 all without
+(Intercept)   -2.238  -2.683
+age_c          0.074   0.106
+load_c         0.216   0.312
+prev_injuries  0.526   0.673
+age_c:load_c   0.111   0.139

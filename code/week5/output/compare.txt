@@ -1,0 +1,3 @@
+             AIC     p expected
+product  535.297 0.003    2.554
+above_25 532.353 0.363    4.056

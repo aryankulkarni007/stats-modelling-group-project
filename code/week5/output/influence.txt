@@ -1,0 +1,6 @@
+                        threshold                           flagged 
+                       0.01311475                       14.00000000 
+              flagged_and_injured                      largest_cook 
+                      13.00000000                        0.03471152 
+largest_fitted_risk_among_flagged 
+                       0.76618121 

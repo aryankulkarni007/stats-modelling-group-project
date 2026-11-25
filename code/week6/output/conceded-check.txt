@@ -1,0 +1,2 @@
+  dispersion largest_cook 
+  0.57497389   0.05559051 

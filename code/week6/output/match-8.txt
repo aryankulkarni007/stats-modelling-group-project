@@ -1,0 +1,2 @@
+cook_threshold   cook_match_8 fitted_match_8 prob_8_or_more 
+    0.20000000     0.63925516     3.00024597     0.01190982 

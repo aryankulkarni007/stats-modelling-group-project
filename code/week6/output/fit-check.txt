@@ -1,0 +1,4 @@
+     deviance            df       p_chisq   p_simulated    dispersion 
+   49.7845050    43.0000000     0.2214280     0.4385000     0.9904079 
+p_interaction 
+    0.5479334 

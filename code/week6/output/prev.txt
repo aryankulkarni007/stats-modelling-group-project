@@ -1,0 +1,4 @@
+deviance_explained                 df                  p 
+         4.7563961          6.0000000          0.5754151 
+        dispersion 
+         1.3087058 

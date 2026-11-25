@@ -1,0 +1,4 @@
+              Estimate Std. Error Pr(>|z|) rate_ratio 2.5 % 97.5 %
+(Intercept)      0.673      0.313    0.032      1.960 1.023  3.505
+home_awayHome   -0.654      0.342    0.056      0.520 0.258  0.999
+opponent_rank   -0.052      0.024    0.029      0.949 0.905  0.994

@@ -1,0 +1,278 @@
+\documentclass[12pt,notitlepage]{report}
+% The shared notes preamble lives outside this repo.
+\input{/Users/aryankulkarni/Documents/y3-notes/preamble.tex}
+
+\title{Week 5: residuals and diagnostics for the injury model}
+\author{Aryan Kulkarni}
+\date{MTH6134 group project}
+
+\begin{document}
+\maketitle
+
+\paragraph{Findings.}
+The injury model of week 4 passes its checks overall, and no player drives
+it. One weakness shows: among young players on high training loads the
+product term predicts too few injuries. A variant in which load matters only
+above age 25 removes it. The linear model for minutes was checked in week 2
+and stands.
+
+\section{Residuals for a GLM}
+
+In a GLM the variance changes with the mean, so a raw residual
+$y_i - \hat\mu_i$ has to be scaled before residuals can be compared. The two
+standard choices are
+\[
+  r^P_i = \frac{y_i - \hat\mu_i}{\sqrt{V(\hat\mu_i)}},
+  \qquad
+  r^D_i = \operatorname{sign}(y_i - \hat\mu_i)\sqrt{d_i},
+\]
+the Pearson and deviance residuals, where $d_i$ is observation $i$'s
+contribution to the deviance. Dividing either by $\sqrt{1 - h_{ii}}$
+standardises it, with $h_{ii}$ the leverage from the final weighted
+least-squares fit.
+
+For a binary response these fail as plotting tools. Given $\hat\mu_i$, a
+residual takes one of two values, so a plot against fitted values is two
+curves whatever the model. Two repairs are used here.
+
+\paragraph{Binned residuals.}
+Sort the players by fitted probability, cut them into 20 bins and average the
+raw residuals in each. A bin mean has standard error
+$\sqrt{\sum \hat\pi_i(1 - \hat\pi_i)}/n_{\text{bin}}$ under the model, so
+about 19 of 20 bins should lie within two standard errors of zero.
+
+\paragraph{Randomised quantile residuals.}
+Let $F$ be the fitted distribution function of $Y_i$. Draw
+$u_i \dist U\{F(y_i - 1), F(y_i)\}$ and set $r^Q_i = \Phi^{-1}(u_i)$. If the
+model is right these are exactly standard normal, so the plots of week 2
+apply again. The function is \mintinline{r}|qresid()| in
+\mintinline{r}|common.R|.
+
+\begin{minted}{r}
+source("../common.R")
+players <- players |> mutate(age_c = age - 25, load_c = training_load - 3)
+fit_main <- glm(
+  injured ~ age_c + load_c + prev_injuries,
+  family = binomial,
+  data = players
+)
+fit_inj <- update(fit_main, . ~ . + age_c:load_c)
+
+binned <- function(fit, bins = 20) {
+  tibble(fitted = fitted(fit), residual = fit$y - fitted(fit)) |>
+    mutate(bin = ntile(fitted, bins)) |>
+    group_by(bin) |>
+    summarise(
+      mean_fitted = mean(fitted),
+      mean_residual = mean(residual),
+      bound = 2 * sqrt(sum(fitted * (1 - fitted))) / n()
+    )
+}
+bins <- binned(fit_inj)
+q <- qresid(fit_inj)
+
+base_fig("residuals", mfrow = c(1, 3), height = 2.3)
+plot(
+  predict(fit_inj),
+  resid(fit_inj),
+  col = pt,
+  xlab = "Linear predictor",
+  ylab = "Deviance residuals"
+)
+plot(
+  bins$mean_fitted,
+  bins$mean_residual,
+  col = blue,
+  ylim = range(-bins$bound, bins$bound, bins$mean_residual),
+  xlab = "Mean fitted probability",
+  ylab = "Mean residual in bin"
+)
+abline(h = 0)
+lines(bins$mean_fitted, bins$bound, lty = 2)
+lines(bins$mean_fitted, -bins$bound, lty = 2)
+qqnorm(q, main = "", col = pt)
+qqline(q, lwd = 2)
+dev.off()
+
+out(
+  c(
+    bins_outside = sum(abs(bins$mean_residual) > bins$bound),
+    largest_abs_quantile_residual = max(abs(q))
+  ),
+  "residual-numbers"
+)
+\end{minted}
+
+\begin{figure}[H]
+  \centering
+  \incfig{residuals}
+  \caption{Left: deviance residuals form two bands and say nothing. Centre:
+    binned residuals with two-standard-error bounds. Right: QQ plot of
+  quantile residuals.}
+  \label{fig:residuals}
+\end{figure}
+
+\inputminted{text}{output/residual-numbers.txt}
+
+One of the 20 bins lies outside its bounds, which is the number expected by
+chance, and the bin means show no trend across the range of fitted risk. The
+quantile residuals follow the normal line.
+
+\section{Can the checks find a missing term?}
+
+A diagnostic earns trust by catching a known fault. The main-effects model
+omits the age by load interaction, so its residuals should be positive where
+age and load are both high.
+
+\begin{minted}{r}
+cells <- players |>
+  mutate(
+    age_band = cut(
+      age,
+      c(16, 22, 25, 28, 36),
+      labels = c("17-22", "23-25", "26-28", "29-36")
+    ),
+    load = ifelse(training_load >= 4, "4-5", "1-3"),
+    main = injured - fitted(fit_main),
+    final = injured - fitted(fit_inj),
+    v = fitted(fit_inj) * (1 - fitted(fit_inj))
+  ) |>
+  group_by(load, age_band) |>
+  summarise(
+    n = n(),
+    main = mean(main),
+    final = mean(final),
+    two_se = 2 * sqrt(sum(v)) / n(),
+    .groups = "drop"
+  )
+out(
+  as.data.frame(cells) |> mutate(across(main:two_se, \(x) round(x, 3))),
+  "cells"
+)
+\end{minted}
+
+\inputminted{text}{output/cells.txt}
+
+The main-effects model is caught. At high load its mean residual climbs with
+age from $-0.046$ to $+0.163$, and the last cell lies outside its bound of
+0.139: among players aged 29 and over on loads 4 to 5, the injury rate is 16
+percentage points above what that model fits. With the interaction included
+all eight cells are inside their bounds.
+
+\section{Leverage and influence}
+
+\begin{minted}{r}
+cook <- cooks.distance(fit_inj)
+cook_cut <- 8 / (nobs(fit_inj) - 2 * length(coef(fit_inj)))
+flagged <- which(cook > cook_cut)
+out(
+  c(
+    threshold = cook_cut,
+    flagged = length(flagged),
+    flagged_and_injured = sum(players$injured[flagged]),
+    largest_cook = max(cook),
+    largest_fitted_risk_among_flagged = max(fitted(fit_inj)[flagged])
+  ),
+  "influence"
+)
+
+fit_drop <- update(fit_inj, data = players[-flagged, ])
+out(
+  round(cbind(all = coef(fit_inj), without = coef(fit_drop)), 3),
+  "sensitivity"
+)
+\end{minted}
+
+\inputminted{text}{output/influence.txt}
+\inputminted{text}{output/sensitivity.txt}
+
+Fourteen players exceed the threshold of 0.013, none by much (the largest
+distance is 0.035). Thirteen are injured players to whom the model gave a low
+risk, and one is an uninjured player with a fitted risk of 0.77. In a binary
+model the influential observations are the surprises. Without them every
+coefficient grows in size, the interaction from 0.111 to 0.139, so these
+players pull the estimates towards zero and no conclusion rests on them. They
+stay in.
+
+\section{Calibration}
+
+The Hosmer-Lemeshow statistic groups players by fitted risk and compares
+observed with expected injuries in each group, as a Pearson $\chi^2$ on
+(groups $-$ 2) degrees of freedom.
+
+\begin{minted}{r}
+hosmer <- function(fit, groups) {
+  p <- fitted(fit)
+  group <- cut(p, unique(quantile(p, 0:groups / groups)), include.lowest = TRUE)
+  observed <- tapply(fit$y, group, sum)
+  expected <- tapply(p, group, sum)
+  size <- tapply(p, group, length)
+  x2 <- sum((observed - expected)^2 / (expected * (1 - expected / size)))
+  c(
+    groups = groups,
+    x2 = x2,
+    p = pchisq(x2, length(observed) - 2, lower.tail = FALSE)
+  )
+}
+out(
+  round(t(sapply(c(5, 6, 8, 10, 12, 15), hosmer, fit = fit_inj)), 3),
+  "hosmer"
+)
+
+fit_alt <- glm(
+  injured ~ age_c + prev_injuries + I(pmax(age_c, 0) * load_c),
+  family = binomial,
+  data = players
+)
+young <- players$age <= 21 & players$training_load >= 4
+compare <- rbind(
+  product = c(
+    AIC = AIC(fit_inj),
+    hosmer(fit_inj, 10)["p"],
+    expected = sum(fitted(fit_inj)[young])
+  ),
+  above_25 = c(
+    AIC = AIC(fit_alt),
+    hosmer(fit_alt, 10)["p"],
+    expected = sum(fitted(fit_alt)[young])
+  )
+)
+out(round(compare, 3), "compare")
+out(
+  c(players = sum(young), injured = sum(players$injured[young])),
+  "young-high-load"
+)
+\end{minted}
+
+\inputminted{text}{output/hosmer.txt}
+\inputminted{text}{output/young-high-load.txt}
+\inputminted{text}{output/compare.txt}
+
+The verdict depends on the number of groups: $p$ is 0.71 with 5 groups,
+0.003 with 10 and 0.32 with 12. A statistic this unstable cannot settle the
+question of fit, but the 10-group result points somewhere specific. Of the 37
+players aged 21 or under on loads 4 to 5, 5 were injured where the model
+expects 2.6. This is the falling part of the curves in week 4: the product
+term lowers the fitted risk of young players as load rises, and the data show
+no such fall.
+
+The second model lets load act only above age 25, through the term
+$\max(\text{age} - 25, 0) \times \text{load}$. It has one parameter fewer, a
+lower AIC (532.4 against 535.3), expects 4.1 injuries in that group and
+passes the 10-group test ($p = 0.36$). It was chosen after seeing the misfit,
+so its support is overstated. It tells the same story in a more plausible
+form: load carries no extra risk up to 25 and a growing one after.
+
+\section{Summary}
+
+\begin{itemize}
+  \item Residual plots for binary data need binning or randomisation. With
+    them the injury model shows no systematic misfit across the range of
+    fitted risk.
+  \item No single player or small group of players drives the conclusions.
+  \item The product form of the interaction understates risk for young
+    players on high loads. The variant with a load effect from age 25 fits
+    at least as well and is a candidate for the report.
+\end{itemize}
+
+\end{document}

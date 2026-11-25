@@ -1,0 +1,6 @@
+                         deviance df      p
+drop position, bmi         3.0438  4 0.5505
+add age_c:load_c          13.9730  1 0.0002
+add age_c:prev_injuries    0.0772  1 0.7812
+add load_c:prev_injuries   2.4323  1 0.1189
+add team                  20.8834 23 0.5882

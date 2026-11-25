@@ -1,0 +1,221 @@
+\documentclass[12pt,notitlepage]{report}
+% The shared notes preamble lives outside this repo.
+\input{/Users/aryankulkarni/Documents/y3-notes/preamble.tex}
+
+\title{Week 4: binomial regression for injury}
+\author{Aryan Kulkarni}
+\date{MTH6134 group project}
+
+\begin{document}
+\maketitle
+
+\paragraph{Findings.}
+Injury risk rises with previous injuries (odds ratio 1.69 per injury) and
+with training load, and the effect of load depends on age: there is no evidence of it at
+20, and it doubles the odds per point at 30. Position, BMI and club show no
+additional effect.
+
+\section{Observed injury rates}
+
+Of the 620 players, 115 (18.5\%) were injured during the season.
+
+\begin{minted}{r}
+source("../common.R")
+players <- players |>
+  mutate(
+    age_c = age - 25,
+    load_c = training_load - 3,
+    age_band = cut(age, c(16, 22, 25, 28, 36),
+                   labels = c("17-22", "23-25", "26-28", "29-36")),
+    load_band = cut(training_load, c(0, 2, 3, 5), labels = c("1-2", "3", "4-5"))
+  )
+
+rates <- players |>
+  mutate(across(c(age_band, training_load, prev_injuries), as.character)) |>
+  pivot_longer(c(age_band, training_load, prev_injuries),
+               names_to = "variable", values_to = "level") |>
+  group_by(variable, level) |>
+  summarise(n = n(), rate = mean(injured),
+            se = sqrt(rate * (1 - rate) / n), .groups = "drop")
+
+fig <- ggplot(rates, aes(x = level, y = rate)) +
+  geom_pointrange(aes(ymin = pmax(rate - 1.96 * se, 0),
+                      ymax = rate + 1.96 * se),
+                  colour = blue, size = 0.3) +
+  facet_wrap(~variable, scales = "free_x", labeller = as_labeller(c(
+    age_band = "age", training_load = "training load",
+    prev_injuries = "previous injuries"
+  ))) +
+  labs(x = NULL, y = "Proportion injured")
+save_fig(fig, "rates", height = 2.5)
+
+out(round(with(players, tapply(injured, list(age = age_band, load = load_band),
+                               mean)), 2), "rates-age-load")
+\end{minted}
+
+\begin{figure}[H]
+  \centering
+  \incfig{rates}
+  \caption{Proportion injured with 95\% intervals. Risk climbs with age,
+    with training load and most steeply with previous injuries.}
+\end{figure}
+
+\inputminted{text}{output/rates-age-load.txt}
+
+The two-way table shows more than the margins do. Among players aged 22 or
+under the injury rate is flat across load. Among those aged 29 or over it
+runs from 12\% at low load to 48\% at high load.
+
+\section{The model}
+
+Each player's injury is $Y_i \dist \text{Bernoulli}(\pi_i)$ with
+\[
+  \log\frac{\pi_i}{1 - \pi_i} = \bm{x}_i^\top \bm{\beta},
+\]
+so a coefficient is a change in the log odds and $e^{\beta}$ is an odds
+ratio. Age is centred at 25 and training load at 3, which makes the intercept
+and main effects refer to a typical player. \mintinline{r}|minutes_played| is
+excluded for the reason given in week 3.
+
+\begin{minted}{r}
+fit_all <- glm(injured ~ position + age_c + load_c + prev_injuries + bmi,
+               family = binomial, data = players)
+out(round(coef(summary(fit_all)), 4), "coef-all")
+
+fit_main <- glm(injured ~ age_c + load_c + prev_injuries,
+                family = binomial, data = players)
+drop_test <- anova(fit_main, fit_all, test = "Chisq")
+
+add_term <- function(term) {
+  bigger <- update(fit_main, as.formula(paste(". ~ . +", term)))
+  test <- anova(fit_main, bigger, test = "Chisq")
+  data.frame(deviance = test$Deviance[2], df = test$Df[2],
+             p = test$`Pr(>Chi)`[2], row.names = paste("add", term))
+}
+tests <- rbind(
+  data.frame(deviance = drop_test$Deviance[2], df = drop_test$Df[2],
+             p = drop_test$`Pr(>Chi)`[2], row.names = "drop position, bmi"),
+  add_term("age_c:load_c"),
+  add_term("age_c:prev_injuries"),
+  add_term("load_c:prev_injuries"),
+  add_term("team")
+)
+out(round(tests, 4), "tests")
+\end{minted}
+
+\inputminted{text}{output/coef-all.txt}
+\inputminted{text}{output/tests.txt}
+
+Each row is a likelihood-ratio test: the change in deviance between nested
+models is compared with $\chi^2$ on the change in degrees of freedom.
+Position and BMI can be dropped together ($p = 0.55$). Of the three two-way
+interactions only age by training load matters, and it matters strongly
+(deviance 13.97 on 1 degree of freedom, $p = 0.0002$). Adding the 23 club
+indicators does not help ($p = 0.59$).
+
+\begin{minted}{r}
+fit_inj <- update(fit_main, . ~ . + age_c:load_c)
+out(summary(fit_inj), "summary-inj")
+out(round(exp(cbind(odds_ratio = coef(fit_inj), confint(fit_inj))), 3),
+    "odds-ratios")
+\end{minted}
+
+\inputminted{text}{output/summary-inj.txt}
+\inputminted{text}{output/odds-ratios.txt}
+
+The intervals are profile-likelihood intervals. The model lowers the deviance
+from 594.7 to 525.3 using four parameters.
+
+\section{Interpretation}
+
+\paragraph{Previous injuries.}
+Each previous injury multiplies the odds of injury by 1.69 (95\% interval
+1.41 to 2.03), whatever the player's age and load.
+
+\paragraph{Training load and age.}
+With an interaction in the model, the main effects describe one slice only:
+\mintinline{r}|load_c| is the load effect at age 25 and
+\mintinline{r}|age_c| the age effect at load 3. The log odds ratio for one
+more point of load at age $a$ is
+$\hat\beta_{\text{load}} + (a - 25)\hat\beta_{\text{age:load}}$, with a
+standard error that needs both variances and their covariance.
+
+\begin{minted}{r}
+b <- coef(fit_inj)
+v <- vcov(fit_inj)
+load_effect <- function(age) {
+  k <- age - 25
+  estimate <- b[["load_c"]] + k * b[["age_c:load_c"]]
+  se <- sqrt(v["load_c", "load_c"] + k^2 * v["age_c:load_c", "age_c:load_c"] +
+               2 * k * v["load_c", "age_c:load_c"])
+  data.frame(age, odds_ratio = exp(estimate),
+             lower = exp(estimate - 1.96 * se),
+             upper = exp(estimate + 1.96 * se))
+}
+out(round(map_dfr(c(20, 25, 30), load_effect), 2), "load-effect")
+
+grid <- expand_grid(age = 17:36, training_load = 1:5, prev_injuries = 0) |>
+  mutate(age_c = age - 25, load_c = training_load - 3)
+grid$probability <- predict(fit_inj, grid, type = "response")
+
+fig <- ggplot(grid, aes(x = age, y = probability,
+                        colour = factor(training_load))) +
+  geom_line() +
+  scale_colour_manual(values = pal_load, name = "Training load") +
+  labs(x = "Age", y = "Fitted probability of injury")
+save_fig(fig, "fitted", height = 2.8)
+\end{minted}
+
+\inputminted{text}{output/load-effect.txt}
+
+\begin{figure}[H]
+  \centering
+  \incfig{fitted}
+  \caption{Fitted injury probability for a player with no previous injuries.
+    The lines cross near age 23: below it load carries no extra risk, above
+    it the lines fan out.}
+  \label{fig:fitted}
+\end{figure}
+
+At 20 the odds ratio per point of load is 0.71 with an interval that includes
+1, so there is no evidence of any load effect for young players. At 25 it is
+1.24, and at 30 it is 2.17 (1.54 to 3.05). In probabilities, a 30-year-old
+with no injury history has a fitted risk of 7\% at load 2 and 42\% at load 5.
+
+\paragraph{Caution.}
+The curves below age 23 fall with load because a single product term must
+bend both ways. The data there are consistent with no effect, and week 5
+checks whether that part of the fit can be trusted.
+
+\section{A second binary outcome: winning}
+
+\begin{minted}{r}
+fit_win <- glm(result == "Win" ~ home_away + opponent_rank,
+               family = binomial, data = matches)
+out(round(cbind(coef(summary(fit_win))[, c(1, 2, 4)],
+                exp(cbind(odds_ratio = coef(fit_win), confint(fit_win)))), 3),
+    "win")
+\end{minted}
+
+\inputminted[fontsize=\footnotesize]{text}{output/win.txt}
+
+Playing at home multiplies Ashford's odds of winning by 4.9, and each place
+lower the opponent finished multiplies them by 1.09. With 46 matches the
+intervals are wide (1.4 to 19.9 for home advantage), and the opponent effect
+does not reach the 5\% level ($p = 0.07$). Reducing a match to win or not
+discards the score, so weeks 6 and 10 model the goals and the three-level
+result.
+
+\section{Summary}
+
+\begin{itemize}
+  \item Final model: \mintinline{r}|injured ~ age_c * load_c + prev_injuries|
+    with a logit link.
+  \item Previous injuries act the same for everyone. The evidence that training
+    load is a risk factor is confined to older players.
+  \item The residual deviance of a binary model cannot test fit, because each
+    observation is 0 or 1. Week 5 checks this model with tools made for
+    binary data.
+\end{itemize}
+
+\end{document}

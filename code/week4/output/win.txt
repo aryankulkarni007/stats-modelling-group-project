@@ -1,0 +1,4 @@
+              Estimate Std. Error Pr(>|z|) odds_ratio 2.5 % 97.5 %
+(Intercept)     -2.020      0.842    0.016      0.133 0.021  0.608
+home_awayHome    1.587      0.671    0.018      4.889 1.383 19.859
+opponent_rank    0.088      0.049    0.070      1.092 0.997  1.211

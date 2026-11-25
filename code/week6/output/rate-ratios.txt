@@ -1,0 +1,4 @@
+              rate_ratio 2.5 % 97.5 %
+(Intercept)        0.407 0.189  0.810
+home_awayHome      2.000 1.184  3.488
+opponent_rank      1.056 1.017  1.098
