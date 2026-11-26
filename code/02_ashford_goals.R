@@ -81,6 +81,13 @@ round(exp(cbind(RR = coef(c2), confint(c2))), 3)
 # Dispersion: early checks suggest UNDER-dispersion (~0.6) -- discuss what this means
 sum(residuals(c2, type = "pearson")^2) / df.residual(c2)
 summary(glm(goals_conceded ~ home_away + opponent_rank, family = quasipoisson, data = matches))
+
+# Negative binomial (week 5 notes): alternative for overdispersed counts.
+# Theta was very large (about 34, SE about 144) and AIC was higher than the
+# Poisson, so the negative binomial does not improve on the Poisson model.
+
+# No offset: every observation is one match of the same length,
+# so exposure is equal for all matches.
 par(mfrow = c(2, 2)); plot(c2); par(mfrow = c(1, 1))
 
 # -----------------------------------------------------------------------------
